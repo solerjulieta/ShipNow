@@ -5,6 +5,13 @@ export const USER_ROLES = Object.freeze({
     STORE: 'store'
 })
 
+// Estados de stock de Products
+export const PRODUCT_STATUS = Object.freeze({
+    AVAILABLE: 'available',
+    OUT_OF_STOCK: 'out_of_stock',
+    DISCONTINUED: 'discontinued'
+})
+
 export const DELIVERY_STATUS = Object.freeze({
     PENDING: 'pending',
     ASSIGNED: 'assigned',

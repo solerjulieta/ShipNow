@@ -1,9 +1,9 @@
-import OrderService from '../services/order.services.js'
+import OrderService from '../services/order.service.js'
 import { HTTP_STATUS } from '../constants/index.js'
 
 const orderService = new OrderService()
 
-export const getOrders = async (req, resizeBy, next) => {
+export const getOrders = async (req, res, next) => {
     try {
         const orders = await orderService.findAll(req.query)
         res.status(HTTP_STATUS.OK).json({ status: 'success', data: orders })
@@ -41,8 +41,8 @@ export const updateOrder = async (req, res, next) => {
 
 export const deleteOrder = async (req, res, next) => {
     try {
-        const order = await orderService.update(req.params.oid)
-        res.status(HTTP_STATUS.OK).json({ status: 'success', data: order })
+        await orderService.delete(req.params.oid)
+        res.status(HTTP_STATUS.OK).json({ status: 'success', message: 'Orden eliminada exitosamente.' })
     } catch (error) {
         next(error)
     }

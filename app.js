@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import routes from './src/routes/index.js'
+import routes from './src/routes/index.routes.js'
 import { errorHandler } from './src/middlewares/errorHandler.js'
 import { notFound } from './src/middlewares/notFound.js'
 
