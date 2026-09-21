@@ -83,6 +83,18 @@ El Controller nunca importa Mongoose.
 | PUT | `/:uid` | Actualiza un usuario |
 | DELETE | `/:uid` | Elimina un usuario |
 
+### Productos — `/api/products`
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/` | Lista productos. Por defecto solo muestra `available`. Filtros: `?category=`, `?status=` |
+| GET | `/:pid` | Detalle de un producto |
+| POST | `/` | Crea un producto |
+| PUT | `/:pid` | Actualiza un producto |
+| DELETE | `/:pid` | Elimina un producto |
+
+El `status` (`available` / `out_of_stock` / `discontinued`) no se manda por body: lo calcula el Service a partir del `stock`. Si el stock llega a 0, el producto pasa solo a `out_of_stock`.
+
 ### Órdenes — `/api/orders`
 
 | Método | Ruta | Descripción |
@@ -130,9 +142,10 @@ Cualquier salto (por ejemplo, de `pending` a `delivered`) devuelve un 409 con el
 
 ## Modelos
 
-Son tres, y la decisión de qué va junto y qué va separado se tomó por ciclo de vida:
+Son cuatro, y la decisión de qué va junto y qué va separado se tomó por ciclo de vida:
 
 - **User**: usuarios del sistema con su rol (`admin`, `customer`, `driver`, `store`).
+- **Product**: el catálogo. Tiene vida propia y se consulta de forma independiente, por eso es colección propia y no un subdocumento.
 - **Order**: la orden, con los **ítems embebidos** como subdocumentos. Un ítem no existe sin su orden ni se consulta por separado, así que no merece colección propia.
 - **Delivery**: **colección aparte**, porque tiene vida propia: cambia de estado, se le asigna un repartidor y tiene sus propias fechas. Guarda la referencia a la orden, y la orden la expone con un campo virtual.
 
@@ -144,6 +157,7 @@ El criterio que usé fue preguntarme: **si mañana cambio MongoDB por otra base 
 
 **En el Service quedaron las reglas de negocio**, que son las que realmente definen cómo funciona ShipNow:
 
+- **El status de un producto.** No se acepta del body: se calcula a partir del `stock` (0 unidades pasa a `out_of_stock` solo). Igual que con el total de la orden, si el cliente pudiera mandarlo, cualquiera podría marcar un producto sin stock como disponible.
 - **El cálculo del total de la orden.** Es el ejemplo más claro. El total se calcula recorriendo los ítems, y el valor que venga en el body se descarta. Si lo aceptáramos, cualquiera podría mandar `"total": 0` y pagar nada. Un Repository no debería hacer este cálculo: su trabajo es guardar el número, no decidirlo.
 - **La creación automática del Delivery** al crear una orden. Que toda orden nazca con una entrega en `pending` es una regla del negocio, no de la base.
 - **Las validaciones de rol:** que el `customer` de una orden sea realmente un usuario con rol `customer`, y que el `driver` de una entrega tenga rol `driver`.
