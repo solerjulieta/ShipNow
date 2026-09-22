@@ -2,7 +2,7 @@
 
 API REST de ShipNow refactorizada a una arquitectura en capas (**Controller → Service → Repository**), con configuración de entorno validada al arranque.
 
-Pre-entrega Módulo 1.
+Pre-entrega Módulo 2 (mocking y carta de datos de prueba)
 
 ## Requisitos
 
@@ -59,7 +59,7 @@ Error: Falta configurar la variable de entorno: MONGODB_URI. Copiá el archivo .
     ├── controllers/       # Manejan req y res
     ├── routes/            # Conectan el path con el método del controller
     ├── middlewares/       # Manejo de errores y rutas inexistentes
-    └── utils/             # AppError y helpers
+    └── utils/             # AppError, helpers y el generador de datos falsos
 ```
 
 El flujo de dependencias va en una sola dirección:
@@ -140,6 +140,62 @@ pending → assigned → in_transit → delivered
 
 Cualquier salto (por ejemplo, de `pending` a `delivered`) devuelve un 409 con el motivo.
 
+### Mocking y carga de datos de prueba — `/api/mocks`
+
+Genera datos con forma de usuarios, repartidores, pedidos y entregas para no tener que cargarlos a mano. Usa [`@faker-js/faker`](https://fakerjs.dev/) (locale `es_MX`) para nombres, emails y direcciones.
+
+Hay dos tipos de endpoint:
+
+**Previsualización — `GET`, nunca escriben en la base.** Sirven para ver la forma del dato antes de decidir si lo cargás.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/mocks/users?qty=` | Usuarios simulados. `?role=` opcional (`admin`, `customer`, `driver`, `store`); sin ese parámetro, el rol sale al azar |
+| GET | `/api/mocks/drivers?qty=` | Atajo de lo anterior, forzando `role: driver` |
+| GET | `/api/mocks/orders?qty=` | Pedidos simulados, con ítems y dirección. El `customer` es un ID inventado (no corresponde a un usuario real): esto es solo previsualización |
+| GET | `/api/mocks/deliveries?qty=` | Entregas simuladas, con `status` y `priority` válidos. La mitad, aproximadamente, trae un `driver` asignado |
+
+`qty` es opcional (default `5`, tope `50`).
+
+```bash
+curl "http://localhost:8080/api/mocks/users?qty=2"
+```
+```json
+[
+  { "firstName": "Ana", "lastName": "Pérez", "email": "ana.perez@test.com", "password": "Coder123!", "role": "customer" },
+  { "firstName": "Luis", "lastName": "Gómez", "email": "luis.gomez@test.com", "password": "Coder123!", "role": "driver" }
+]
+```
+
+**Carga real — `POST /api/mocks/seed`, inserta en MongoDB.** A diferencia de la previsualización, este endpoint pasa los datos generados por los Services reales (`UserService`, `OrderService`, `DeliveryService`): la contraseña se hashea igual que en un registro real, el total del pedido se calcula igual, y cada pedido nace con su entrega en `pending` igual que si lo hubiera creado una persona.
+
+```bash
+curl -X POST "http://localhost:8080/api/mocks/seed?qty=10&collection=users"
+```
+```json
+{ "insertados": 10, "coleccion": "usuarios" }
+```
+
+`collection` acepta `users` (default), `drivers`, `orders` o `deliveries`:
+
+| `collection` | Qué inserta | Relaciones que arma solo |
+|---|---|---|
+| `users` | Usuarios con rol `customer` | — |
+| `drivers` | Usuarios con rol `driver` | — |
+| `orders` | Pedidos completos (con su delivery en `pending`) | Si no hay suficientes clientes en la base, crea los que faltan antes de generar los pedidos |
+| `deliveries` | No crea entregas sueltas (nacen con el pedido): toma entregas `pending` existentes y a la mitad les asigna un repartidor real | Si no hay suficientes entregas pendientes, genera los pedidos que faltan primero; si no hay repartidores, los crea |
+
+Esto es lo que hace que se cumplan las relaciones pedidas por la consigna sin tener que armarlas a mano: un pedido siempre apunta a un cliente que existe de verdad, y una entrega asignada siempre apunta a un repartidor (rol `driver`) real.
+
+Ejemplo de secuencia para tener datos de prueba completos:
+
+```bash
+curl -X POST "http://localhost:8080/api/mocks/seed?qty=5&collection=users"
+curl -X POST "http://localhost:8080/api/mocks/seed?qty=3&collection=drivers"
+curl -X POST "http://localhost:8080/api/mocks/seed?qty=8&collection=orders"
+curl -X POST "http://localhost:8080/api/mocks/seed?qty=4&collection=deliveries"
+```
+
 ## Modelos
 
 Son cuatro, y la decisión de qué va junto y qué va separado se tomó por ciclo de vida:
@@ -197,4 +253,3 @@ Los `enum` de los modelos también se arman desde ahí (`enum: Object.values(USE
 
 - `.env` está en el `.gitignore`; el repositorio solo incluye `.env.example`.
 - `process.env` se lee **únicamente** en `src/config/env.config.js`.
-- Todavía no hay autenticación con JWT: llega en el próximo módulo. La verificación de credenciales y el hasheo ya están implementados.
