@@ -43,3 +43,19 @@ export const HTTP_STATUS = Object.freeze({
     CONFLICT: 409,
     INTERNAL_ERROR: 500
 })
+
+// Colecciones que el módulo de mocking sabe generar/insertar
+export const MOCK_COLLECTIONS = Object.freeze({
+    USERS: 'users',
+    DRIVERS: 'drivers',
+    ORDERS: 'orders',
+    DELIVERIES: 'deliveries'
+})
+
+// Nombre en español que se devuelve en la respuesta del endpoint de seed
+export const MOCK_COLLECTION_LABELS = Object.freeze({
+    [MOCK_COLLECTIONS.USERS]: 'usuarios',
+    [MOCK_COLLECTIONS.DRIVERS]: 'repartidores',
+    [MOCK_COLLECTIONS.ORDERS]: 'pedidos',
+    [MOCK_COLLECTIONS.DELIVERIES]: 'entregas'
+})
