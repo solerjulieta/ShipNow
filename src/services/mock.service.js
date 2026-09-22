@@ -5,7 +5,7 @@ import DeliveryService from './delivery.service.js'
 import UserRepository from '../repositories/user.repository.js'
 import DeliveryRepository from '../repositories/delivery.repository.js'
 import AppError from '../utils/AppError.js'
-import { buildFakeDeliveryPreview, buildFakeOrder, buildFakeDeliveryPreview, buildFakeUser } from '../utils/mockGenerator.js'
+import { buildFakeUser, buildFakeOrder, buildFakeDeliveryPreview } from '../utils/mockGenerator.js'
 import {
     USER_ROLES,
     DELIVERY_STATUS,
