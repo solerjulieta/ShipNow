@@ -2,6 +2,15 @@ import DeliveryRepository from '../repositories/delivery.repository.js'
 import UserRepository from '../repositories/user.repository.js'
 import AppError from '../utils/AppError.js'
 import {
+    ValidationError,
+    DeliveryNotFoundError,
+    UserNotFoundError,
+    DeliveryNotPendingError,
+    InvalidDeliveryStatusError,
+    InvalidStatusTransitionError,
+    InvalidDeliveryPriorityError
+} from '../errors/index.js'
+import {
     USER_ROLES,
     DELIVERY_STATUS,
     DELIVERY_PRIORITY,
@@ -28,7 +37,7 @@ class DeliveryService {
         const delivery = await this.deliveryRepository.findById(id)
 
         if(!delivery){
-            throw new AppError('La entrega no existe.', HTTP_STATUS.NOT_FOUND)
+            throw new DeliveryNotFoundError(id)
         }
 
         return delivery
@@ -39,23 +48,20 @@ class DeliveryService {
         const delivery = await this.getDeliveryById(deliveryId)
 
         if(delivery.status !== DELIVERY_STATUS.PENDING){
-            throw new AppError(
-                'Solo se puede asignar un repartidor a una entrega pendiente.',
-                HTTP_STATUS.CONFLICT
-            )
+            throw new DeliveryNotPendingError()
         }
 
         const driver = await this.userRepository.findById(driverId)
 
         if(!driver){
-            throw new AppError('El repartidor no existe.', HTTP_STATUS.NOT_FOUND)
+            throw new UserNotFoundError(driverId)
         }
 
         if(driver.role !== USER_ROLES.DRIVER){
-            throw new AppError(
-                'El usuario indicado no es un repartidor.',
-                HTTP_STATUS.BAD_REQUEST
-            )
+            throw new ValidationError('El usuario indicado no es un repartidor.', {
+                field: 'driver',
+                role: driver.role
+            })
         }
 
         return this.deliveryRepository.update(deliveryId, {
@@ -70,19 +76,13 @@ class DeliveryService {
         const delivery = await this.getDeliveryById(deliveryId)
 
         if(!Object.values(DELIVERY_STATUS).includes(newStatus)){
-            throw new AppError(
-                `El estado debe ser uno de: ${Object.values(DELIVERY_STATUS).join(', ')}.`,
-                HTTP_STATUS.BAD_REQUEST
-            )
+            throw new InvalidDeliveryStatusError(newStatus, Object.values(DELIVERY_STATUS))
         }
 
         const allowed = ALLOWED_STATUS_TRANSITIONS[delivery.status]
 
         if(!allowed.includes(newStatus)){
-            throw new AppError(
-                `No se puede pasar de "${delivery.status}" a "${newStatus}".`,
-                HTTP_STATUS.CONFLICT
-            )
+            throw new InvalidStatusTransitionError(delivery.status, newStatus)
         }
 
         const updateData = { status: newStatus }
@@ -99,10 +99,7 @@ class DeliveryService {
         await this.getDeliveryById(deliveryId)
 
         if(!Object.values(DELIVERY_PRIORITY).includes(priority)){
-            throw new AppError(
-                `La prioridad debe ser una de: ${Object.values(DELIVERY_PRIORITY).join(', ')}.`,
-                HTTP_STATUS.BAD_REQUEST
-            )
+            throw new InvalidDeliveryPriorityError(priority, Object.values(DELIVERY_PRIORITY))
         }
 
         return this.deliveryRepository.update(deliveryId, { priority })
@@ -112,7 +109,7 @@ class DeliveryService {
         const driver = await this.userRepository.findById(driverId)
 
         if(!driver){
-            throw new AppError('El repartidor no existe.', HTTP_STATUS.NOT_FOUND)
+            throw new UserNotFoundError(driverId)
         }
 
         return this.deliveryRepository.findByDriver(driverId)

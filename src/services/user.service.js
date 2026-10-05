@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import UserRepository from '../repositories/user.repository.js'
-import AppError from '../utils/AppError.js'
+import { ValidationError, UserNotFoundError, DuplicateEmailError, InvalidCredentialsError } from '../errors/index.js'
 import { USER_ROLES, HTTP_STATUS } from '../constants/index.js'
 
 class UserService {
@@ -19,7 +19,7 @@ class UserService {
         const user = await this.userRepository.findById(id)
 
         if(!user){
-            throw new AppError('El usuario no existe.', HTTP_STATUS.NOT_FOUND)
+            throw new UserNotFoundError(id)
         }
 
         return user
@@ -29,20 +29,19 @@ class UserService {
         const { firstName, lastName, email, password } = userData
 
         if(!firstName || !lastName || !email || !password){
-            throw new AppError('Falta información requerida.', HTTP_STATUS.BAD_REQUEST)
+            throw new ValidationError('Falta información requerida.', {
+                required: ['firstName', 'lastName', 'email', 'password']
+            })
         }
 
         if(password.length < 8){
-            throw new AppError(
-                'La contraseña debe tener al menos 8 caracteres.',
-                HTTP_STATUS.BAD_REQUEST
-            )
+            throw new ValidationError('La contraseña debe tener al menos 8 caracteres.')
         }
 
         const existentUser = await this.userRepository.findByEmail(email)
 
         if(existentUser){
-            throw new AppError('Ya existe un usuario con ese email.', HTTP_STATUS.CONFLICT)
+            throw new DuplicateEmailError(email)
         }
 
         // Si mandan un rol que no existe, cae en customer
@@ -72,7 +71,7 @@ class UserService {
 
             // Si el email ya está tomado por OTRO usuario, error
             if(existentUser && existentUser._id.toString() !== id){
-                throw new AppError('Ya existe un usuario con ese email.', HTTP_STATUS.CONFLICT)
+                throw new DuplicateEmailError(email)
             }
 
             allowedData.email = email
@@ -80,10 +79,7 @@ class UserService {
 
         if(password){
             if(password.length < 8){
-                throw new AppError(
-                    'La contraseña debe tener al menos 8 caracteres.',
-                    HTTP_STATUS.BAD_REQUEST
-                )
+                throw new ValidationError('La contraseña debe tener al menos 8 caracteres.')
             }
             allowedData.password = await bcrypt.hash(password, 10)
         }
@@ -99,19 +95,21 @@ class UserService {
     // Base para cuando agreguemos JWT en el próximo módulo
     async login(email, password){
         if(!email || !password){
-            throw new AppError('Email y contraseña son requeridos.', HTTP_STATUS.BAD_REQUEST)
+            throw new ValidationError('Email y contraseña son requeridos.', {
+                required: ['email', 'password']
+            })
         }
 
         const user = await this.userRepository.findByEmailWithPassword(email)
 
         if(!user){
-            throw new AppError('Email o contraseña incorrectos.', HTTP_STATUS.UNAUTHORIZED)
+            throw new InvalidCredentialsError()
         }
 
         const isValidPassword = await bcrypt.compare(password, user.password)
 
         if(!isValidPassword){
-            throw new AppError('Email o contraseña incorrectos.', HTTP_STATUS.UNAUTHORIZED)
+            throw new InvalidCredentialsError()
         }
 
         return this.userRepository.findById(user._id)

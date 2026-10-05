@@ -1,5 +1,5 @@
 import ProductRepository from '../repositories/product.repository.js'
-import AppError from '../utils/AppError.js'
+import { ValidationError, ProductNotFoundError, InsufficientStockError } from '../errors/index.js'
 import { PRODUCT_STATUS, HTTP_STATUS } from '../constants/index.js'
 
 class ProductService {
@@ -28,7 +28,7 @@ class ProductService {
         const product = await this.productRepository.findById(id)
 
         if(!product){
-            throw new AppError('El producto no existe.', HTTP_STATUS.NOT_FOUND)
+            throw new ProductNotFoundError(id)
         }
 
         return product
@@ -38,14 +38,20 @@ class ProductService {
         const { name, price, category } = productData
 
         if(!name || price === undefined || !category){
-            throw new AppError('Falta información requerida.', HTTP_STATUS.BAD_REQUEST)
+            throw new ValidationError('Falta información requerida.', {
+                required: ['name', 'price', 'category']
+            })
         }
 
         if(price < 0){
-            throw new AppError('El precio no puede ser negativo.', HTTP_STATUS.BAD_REQUEST)
+            throw new ValidationError('El precio no puede ser negativo.', { field: 'price', value: price })
         }
 
         const stock = Number(productData.stock ?? 0)
+
+        if(stock < 0){
+            throw new ValidationError('El stock no puede ser negativo.', { field: 'stock', value: stock })
+        }
 
         return this.productRepository.create({
             name,
@@ -62,6 +68,14 @@ class ProductService {
 
         const nextStock = productData.stock !== undefined ? Number(productData.stock) : current.stock
 
+        if(nextStock < 0){
+            throw new ValidationError('El stock no puede ser negativo.', { field: 'stock', value: nextStock })
+        }
+        
+        if(productData.price !== undefined && productData.price < 0){
+            throw new ValidationError('El precio no puede ser negativo.', { field: 'price', value: productData.price })
+        }
+
         return this.productRepository.update(id, {
             ...productData,
             stock: nextStock,
@@ -77,15 +91,15 @@ class ProductService {
     // Reserva de stock: la va a usar OrderService cuando se cree una orden con productos reales
     async reserveStock(id, quantity){
         if(!Number.isInteger(quantity) || quantity <= 0){
-            throw new AppError('La cantidad debe ser un entero mayor a cero.', HTTP_STATUS.BAD_REQUEST)
+            throw new ValidationError('La cantidad debe ser un entero mayor a cero.', { field: 'quantity', value: quantity })
         }
 
-        const product = await this.getProductById(id)
+        await this.getProductById(id)
 
         const updated = await this.productRepository.decreaseStock(id, quantity)
 
         if(!updated){
-            throw new AppError('No hay stock suficiente para completar la operación.', HTTP_STATUS.CONFLICT)
+            throw new InsufficientStockError()
         }
 
         if(updated.stock === 0 && updated.status === PRODUCT_STATUS.AVAILABLE){

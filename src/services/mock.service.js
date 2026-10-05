@@ -5,6 +5,13 @@ import DeliveryService from './delivery.service.js'
 import UserRepository from '../repositories/user.repository.js'
 import DeliveryRepository from '../repositories/delivery.repository.js'
 import AppError from '../utils/AppError.js'
+import {
+    AppError,
+    InvalidMockQuantityError,
+    InvalidMockCollectionError,
+    InvalidRoleError,
+    MockSeedError
+} from '../errors/index.js'
 import { buildFakeUser, buildFakeOrder, buildFakeDeliveryPreview } from '../utils/mockGenerator.js'
 import {
     USER_ROLES,
@@ -29,11 +36,8 @@ class MockService {
     #parseQty(qty){
         const total = Number(qty)
 
-        if(!Number.isInteger(total) || total < 1){
-            throw new AppError('El parámetro "qty" debe ser un entero mayor a 0.', HTTP_STATUS.BAD_REQUEST)
-        }
-        if(total > MAX_QTY){
-            throw new AppError(`El parámetro "qty" no puede ser mayor a ${MAX_QTY}.`, HTTP_STATUS.BAD_REQUEST)
+        if(!Number.isInteger(total) || total < 1 || total > MAX_QTY){
+            throw new InvalidMockQuantityError(qty, MAX_QTY)
         }
 
         return total
@@ -43,10 +47,7 @@ class MockService {
         if(role === undefined) return undefined
 
         if(!Object.values(USER_ROLES).includes(role)){
-            throw new AppError(
-                `El rol debe ser uno de: ${Object.values(USER_ROLES).join(', ')}.`,
-                HTTP_STATUS.BAD_REQUEST                
-            )
+            throw new InvalidRoleError(role, Object.values(USER_ROLES))
         }
 
         return role
@@ -151,27 +152,29 @@ class MockService {
         const target = collection ?? MOCK_COLLECTIONS.USERS 
 
         if(!Object.values(MOCK_COLLECTIONS).includes(target)){
-            throw new AppError(
-                `La colección debe ser una de: ${Object.values(MOCK_COLLECTIONS).join(', ')}.`,
-                HTTP_STATUS.BAD_REQUEST
-            )            
+            throw new InvalidMockCollectionError(target, Object.values(MOCK_COLLECTIONS))         
         }
 
         let created 
 
-        switch(target){
-            case MOCK_COLLECTIONS.USERS:
-                created = await this.#seedUsers(qty, USER_ROLES.CUSTOMER)
-                break
-            case MOCK_COLLECTIONS.DRIVERS:
-                created = await this.#seedUsers(qty, USER_ROLES.DRIVER)
-                break
-            case MOCK_COLLECTIONS.ORDERS:
-                created = await this.#seedOrders(qty)
-                break
-            case MOCK_COLLECTIONS.DELIVERIES:
-                created = await this.#seedDeliveries(qty)
-                break
+        try {
+            switch(target){
+                case MOCK_COLLECTIONS.USERS:
+                    created = await this.#seedUsers(qty, USER_ROLES.CUSTOMER)
+                    break
+                case MOCK_COLLECTIONS.DRIVERS:
+                    created = await this.#seedUsers(qty, USER_ROLES.DRIVER)
+                    break
+                case MOCK_COLLECTIONS.ORDERS:
+                    created = await this.#seedOrders(qty)
+                    break
+                case MOCK_COLLECTIONS.DELIVERIES:
+                    created = await this.#seedDeliveries(qty)
+                    break
+            }  
+        } catch (error) {
+            if(error instanceof AppError) throw error
+            throw new MockSeedError(error)
         }
 
         return {

@@ -1,7 +1,7 @@
 import OrderRepository from '../repositories/orders.repository.js'
 import UserRepository from '../repositories/user.repository.js'
 import DeliveryRepository from '../repositories/delivery.repository.js'
-import AppError from '../utils/AppError.js'
+import { ValidationError, OrderNotFoundError, UserNotFoundError, OrderLockedError } from '../errors/index.js'
 import { USER_ROLES, DELIVERY_STATUS, HTTP_STATUS } from '../constants/index.js'
 
 class OrderService {
@@ -23,7 +23,7 @@ class OrderService {
         const order = await this.orderRepository.findById(id)
 
         if(!order){
-            throw new AppError('La orden no existe.', HTTP_STATUS.NOT_FOUND)
+            throw new OrderNotFoundError(id)
         }
 
         return order
@@ -33,7 +33,9 @@ class OrderService {
         const { customer, deliveryAddress, items } = orderData
 
         if(!customer || !deliveryAddress || !items || items.length < 1){
-            throw new AppError('Falta información requerida.', HTTP_STATUS.BAD_REQUEST)
+            throw new ValidationError('Falta información requerida.', {
+                required: ['customer', 'deliveryAddress', 'items']
+            })
         }
 
         const invalidItem = items.some(
@@ -46,20 +48,20 @@ class OrderService {
         )
 
         if(invalidItem){
-            throw new AppError(
-                'Todos los ítems deben tener nombre, cantidad y precio válidos.',
-                HTTP_STATUS.BAD_REQUEST
-            )
+            throw new ValidationError('Todos los ítems deben tener nombre, cantidad y precio válidos.', { items })
         }
 
         const existentCustomer = await this.userRepository.findById(customer)
 
         if(!existentCustomer){
-            throw new AppError('El cliente no existe.', HTTP_STATUS.NOT_FOUND)
+            throw new UserNotFoundError(customer)
         }
 
         if(existentCustomer.role !== USER_ROLES.CUSTOMER){
-            throw new AppError('El usuario indicado no es un cliente.', HTTP_STATUS.BAD_REQUEST)
+            throw new ValidationError('El usuario indicado no es un cliente.', {
+                field: 'customer',
+                role: existentCustomer.role
+            })
         }
 
         // El total lo calcula el negocio. Nunca se confía en el valor que manda el cliente.
@@ -80,10 +82,7 @@ class OrderService {
 
         // Una vez que salió a la calle, la orden ya no se toca
         if(delivery && delivery.status !== DELIVERY_STATUS.PENDING){
-            throw new AppError(
-                'No se puede modificar una orden que ya fue asignada a un repartidor.',
-                HTTP_STATUS.CONFLICT
-            )
+            throw new OrderLockedError()
         }
 
         // El cliente y el total no se pueden cambiar por body
@@ -92,7 +91,7 @@ class OrderService {
         // Si cambian los ítems, hay que recalcular el total
         if(allowedData.items){
             if(allowedData.items.length < 1){
-                throw new AppError('La orden debe tener al menos un ítem.', HTTP_STATUS.BAD_REQUEST)
+                throw new ValidationError('La orden debe tener al menos un ítem.')
             }
             allowedData.total = allowedData.items.reduce(
                 (acc, item) => acc + item.price * item.quantity,
@@ -109,10 +108,7 @@ class OrderService {
         const delivery = await this.deliveryRepository.findByOrder(id)
 
         if(delivery && delivery.status !== DELIVERY_STATUS.PENDING){
-            throw new AppError(
-                'No se puede eliminar una orden que ya está en proceso de entrega.',
-                HTTP_STATUS.CONFLICT
-            )
+            throw new OrderLockedError()
         }
 
         // Borramos primero la entrega para no dejar un delivery apuntando a la nada
