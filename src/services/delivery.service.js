@@ -1,6 +1,5 @@
 import DeliveryRepository from '../repositories/delivery.repository.js'
 import UserRepository from '../repositories/user.repository.js'
-import AppError from '../utils/AppError.js'
 import {
     ValidationError,
     DeliveryNotFoundError,

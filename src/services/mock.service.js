@@ -4,7 +4,6 @@ import OrderService from './order.service.js'
 import DeliveryService from './delivery.service.js'
 import UserRepository from '../repositories/user.repository.js'
 import DeliveryRepository from '../repositories/delivery.repository.js'
-import AppError from '../utils/AppError.js'
 import {
     AppError,
     InvalidMockQuantityError,
