@@ -2,7 +2,7 @@
 
 API REST de ShipNow refactorizada a una arquitectura en capas (**Controller → Service → Repository**), con configuración de entorno validada al arranque.
 
-Pre-entrega Módulo 2 (mocking y carta de datos de prueba)
+Pre-entrega Módulo 1 (arquitectura por capas), Módulo 2 (mocking y carga de datos de prueba) y Módulo 3 (manejo profesional de errores).
 
 ## Requisitos
 
@@ -53,13 +53,14 @@ Error: Falta configurar la variable de entorno: MONGODB_URI. Copiá el archivo .
 └── src/
     ├── config/            # dotenv + validación de entorno y conexión a Mongo
     ├── constants/         # Objetos congelados: roles, estados, prioridades
+    ├── errors/            # AppError, clases de error de dominio, códigos y diccionario
     ├── models/            # Solo los esquemas de Mongoose
     ├── repositories/      # Único lugar que conoce Mongoose
     ├── services/          # Lógica de negocio
     ├── controllers/       # Manejan req y res
     ├── routes/            # Conectan el path con el método del controller
-    ├── middlewares/       # Manejo de errores y rutas inexistentes
-    └── utils/             # AppError, helpers y el generador de datos falsos
+    ├── middlewares/       # errorHandler (único lugar que arma una respuesta de error) y rutas inexistentes
+    └── utils/             # Helpers y el generador de datos falsos
 ```
 
 El flujo de dependencias va en una sola dirección:
@@ -225,17 +226,136 @@ La ganancia concreta es que toda la lógica de ShipNow está en un solo lugar y 
 
 ## Manejo de errores
 
-Los Services lanzan `AppError` con su código HTTP:
+Toda la gestión de errores vive en `src/errors/`, separada del resto de las capas:
+
+```
+src/errors/
+├── error-codes.js       # catálogo de códigos (USER_NOT_FOUND, VALIDATION_ERROR, etc.)
+├── error-dictionary.js  # por cada código: su status HTTP y su mensaje por defecto
+├── AppError.js           # clase base: arma el error a partir de un código del diccionario
+├── domainErrors.js       # una clase por cada caso real del dominio (hereda de AppError)
+└── index.js               # punto único de import para todo lo anterior
+```
+
+**Ningún Controller ni ninguna ruta arma una respuesta de error.** Los Services son los únicos que detectan un problema y lo señalan, lanzando una clase de error con nombre propio:
 
 ```js
-throw new AppError('La orden no existe.', 404)
+// src/services/order.service.js
+import { OrderNotFoundError } from '../errors/index.js'
+
+const order = await this.orderRepository.findById(id)
+if(!order) throw new OrderNotFoundError(id)
 ```
 
-Los Controllers solo hacen `next(error)`, y el middleware `errorHandler` arma la respuesta. También traduce los errores propios de Mongoose (validaciones del schema y claves duplicadas) al mismo formato:
+Los Controllers nunca atrapan ese error para responderlo: solo lo reenvían.
+
+```js
+// src/controllers/order.controller.js
+export const getOrderById = async (req, res, next) => {
+    try {
+        const order = await orderService.getOrderById(req.params.oid)
+        res.status(HTTP_STATUS.OK).json({ status: 'success', data: order })
+    } catch (error) {
+        next(error)   // nunca se arma la respuesta de error acá
+    }
+}
+```
+
+`next(error)` termina siempre en `errorHandler` (`src/middlewares/errorHandler.js`), que es el **único** lugar de todo el proyecto que escribe una respuesta de error. Ahí se decide el status HTTP, nunca antes.
+
+### Estructura de la respuesta
+
+Toda respuesta de error, sin excepción (un recurso que no existe, un dato inválido, una ruta que no existe, una falla inesperada), tiene esta forma:
 
 ```json
-{ "status": "error", "message": "La orden no existe." }
+{
+  "status": "error",
+  "code": "ORDER_NOT_FOUND",
+  "message": "La orden con id \"68f1...\" no existe.",
+  "details": null
+}
 ```
+
+- `code`: siempre uno de los valores de `ERROR_CODES` (`src/errors/error-codes.js`). Pensado para que el cliente (frontend, Postman, un test automatizado) pueda reaccionar por código, sin tener que parsear el texto de `message`.
+- `message`: en español, pensado para una persona.
+- `details`: `null` casi siempre; trae información extra en los errores de validación (por ejemplo, qué campos faltaron) o cuando se envuelve una falla real de MongoDB (ver más abajo).
+
+### Errores personalizados del dominio
+
+Cada clase en `domainErrors.js` representa un caso concreto, no un mensaje distinto del mismo error genérico:
+
+| Clase | Código | Status | Cuándo se lanza |
+|---|---|---|---|
+| `ValidationError` | `VALIDATION_ERROR` | 400 | Falta un campo requerido, o un valor no pasa una regla (ítems de un pedido, precio/stock negativo, etc.) |
+| `UserNotFoundError` | `USER_NOT_FOUND` | 404 | El usuario (o cliente, o repartidor) indicado no existe |
+| `ProductNotFoundError` | `PRODUCT_NOT_FOUND` | 404 | El producto no existe |
+| `OrderNotFoundError` | `ORDER_NOT_FOUND` | 404 | El pedido no existe |
+| `DeliveryNotFoundError` | `DELIVERY_NOT_FOUND` | 404 | La entrega no existe |
+| `DuplicateEmailError` | `DUPLICATE_EMAIL` | 409 | Ya existe un usuario con ese email |
+| `InvalidCredentialsError` | `INVALID_CREDENTIALS` | 401 | Login con email o contraseña incorrectos |
+| `InvalidRoleError` | `INVALID_ROLE` | 400 | Rol que no está en `USER_ROLES` |
+| `OrderLockedError` | `ORDER_LOCKED` | 409 | Se intenta editar/borrar un pedido cuya entrega ya salió de `pending` |
+| `InsufficientStockError` | `INSUFFICIENT_STOCK` | 409 | No hay stock suficiente para reservar |
+| `InvalidDeliveryStatusError` | `INVALID_DELIVERY_STATUS` | 400 | Estado que no está en `DELIVERY_STATUS` |
+| `InvalidStatusTransitionError` | `INVALID_STATUS_TRANSITION` | 409 | Transición de estado no permitida (ver `ALLOWED_STATUS_TRANSITIONS`) |
+| `InvalidDeliveryPriorityError` | `INVALID_DELIVERY_PRIORITY` | 400 | Prioridad que no está en `DELIVERY_PRIORITY` |
+| `DeliveryNotPendingError` | `DELIVERY_NOT_PENDING` | 409 | Se intenta asignar repartidor a una entrega que no está `pending` |
+| `InvalidMockQuantityError` | `INVALID_MOCK_QTY` | 400 | `qty` no es un entero entre 1 y 50 (cubre tanto negativos como valores fuera de rango) |
+| `InvalidMockCollectionError` | `INVALID_MOCK_COLLECTION` | 400 | `collection` no es `users`, `drivers`, `orders` ni `deliveries` |
+| `MockSeedError` | `MOCK_SEED_FAILED` | 500 | Falló algo inesperado de MongoDB mientras se insertaban datos de prueba (ver abajo) |
+
+A esto se suman tres códigos que no tienen clase propia porque no los lanza un Service, sino que los detecta directamente el `errorHandler` al reconocer un error que vino de Mongoose o de Express:
+
+| Código | Status | De dónde sale |
+|---|---|---|
+| `CAST_ERROR` | 400 | Un `CastError` de Mongoose (id con formato inválido que logró esquivar la validación previa) |
+| `DUPLICATE_KEY` | 409 | Error `11000` de MongoDB (índice único duplicado a nivel de base) |
+| `ROUTE_NOT_FOUND` | 404 | Ninguna ruta coincidió (lo emite `notFound.js`, con la misma estructura) |
+| `INTERNAL_ERROR` | 500 | Cualquier error no previsto; en producción no expone el mensaje real |
+
+### El módulo de mocks: validación y fallas controladas
+
+`POST /api/mocks/seed` es el único endpoint que escribe en la base, así que es el que más puede fallar. Cubre los tres casos que pide la consigna:
+
+- **Cantidad inválida**: `qty=abc`, `qty=0` o un `qty` que no sea entero → `InvalidMockQuantityError` (400).
+- **Valores negativos**: `qty=-5` → el mismo chequeo de cantidad lo atrapa, porque `-5 < 1` (400). Lo mismo corre para `collection` fuera de la lista válida → `InvalidMockCollectionError` (400).
+- **Fallas durante la carga en MongoDB**: si algo inesperado pasa mientras se están insertando los datos (se cae la conexión, un timeout, etc.), `MockService.seed()` lo atrapa y lo envuelve en `MockSeedError` (500) en vez de dejar que el stack trace crudo de Mongo llegue al cliente. El mensaje original queda guardado en `details.cause`, para debug:
+
+```json
+{
+  "status": "error",
+  "code": "MOCK_SEED_FAILED",
+  "message": "No se pudo completar la carga de datos de prueba.",
+  "details": { "cause": "connection timed out" }
+}
+```
+
+Importante: esto **no** enmascara un error de negocio legítimo. Si durante el seed un email generado chocara con uno existente, eso sigue respondiendo como `DuplicateEmailError` (409) tal cual, porque ya es un `AppError` y no algo inesperado.
+
+### Cómo probar los casos inválidos
+
+```bash
+# Cantidad inválida (incluye negativos)
+curl "http://localhost:8080/api/mocks/users?qty=0"
+curl "http://localhost:8080/api/mocks/users?qty=-5"
+curl "http://localhost:8080/api/mocks/users?qty=999"     # excede el tope de 50
+
+# Rol inválido
+curl "http://localhost:8080/api/mocks/users?role=inventado"
+
+# Colección inválida en el seed
+curl.exe -X POST "http://localhost:8080/api/mocks/seed?collection=inventado"
+
+# Recurso que no existe, en cualquier entidad
+curl "http://localhost:8080/api/users/000000000000000000000000"
+curl "http://localhost:8080/api/orders/000000000000000000000000"
+curl "http://localhost:8080/api/deliveries/000000000000000000000000"
+
+# Ruta que no existe
+curl "http://localhost:8080/api/esto-no-existe"
+```
+
+Todas estas respuestas tienen que verse con la misma forma: `{ "status": "error", "code": "...", "message": "...", "details": ... }`, cambiando solo el `code`, el `message` y el status HTTP según el caso. Si alguna vez un error no sigue este formato, es una señal de que algo quedó respondiendo por fuera del `errorHandler`.
 
 ## Constantes
 
