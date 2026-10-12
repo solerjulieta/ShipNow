@@ -2,7 +2,7 @@
 
 API REST de ShipNow refactorizada a una arquitectura en capas (**Controller → Service → Repository**), con configuración de entorno validada al arranque.
 
-Pre-entrega Módulo 1 (arquitectura por capas), Módulo 2 (mocking y carga de datos de prueba) y Módulo 3 (manejo profesional de errores).
+Pre-entrega Módulo 1 (arquitectura por capas), Módulo 2 (mocking y carga de datos de prueba), Módulo 3 (manejo profesional de errores) y Módulo 4(Logging y monitoreo básico).
 
 ## Requisitos
 
@@ -373,3 +373,36 @@ Los `enum` de los modelos también se arman desde ahí (`enum: Object.values(USE
 
 - `.env` está en el `.gitignore`; el repositorio solo incluye `.env.example`.
 - `process.env` se lee **únicamente** en `src/config/env.config.js`.
+## Logging y monitoreo básico (Módulo 4)
+
+ShipNow utiliza **Winston** mediante una configuración centralizada en `src/config/logger.js`. Los registros incluyen fecha y hora, nivel y mensaje; los metadatos adicionales se adjuntan cuando aportan contexto.
+
+### Niveles disponibles
+
+- `debug`: detalle útil durante el desarrollo.
+- `http`: eventos relacionados con HTTP.
+- `info`: eventos normales, como el inicio del servidor, conexión a MongoDB y creación de pedidos.
+- `warning`: situaciones esperables que requieren atención, como errores de negocio, cantidades inválidas o rutas inexistentes.
+- `error`: errores inesperados de la aplicación.
+- `fatal`: fallas críticas, por ejemplo, una conexión inicial fallida a MongoDB.
+
+### Probar el logger
+
+Con el servidor iniciado, ejecutá esta petición en el navegador, Postman o una terminal:
+
+```bash
+curl http://localhost:8080/api/logger-test
+```
+
+El endpoint genera un evento por cada nivel y devuelve una respuesta JSON de confirmación. En desarrollo, la consola muestra todos los niveles; en producción muestra desde `info`. El endpoint es una herramienta de diagnóstico, no una operación de negocio.
+
+### Archivos y rotación
+
+- Los errores y eventos `fatal` se guardan en `logs/error.log`; los niveles `debug`, `http`, `info` y `warning` no se escriben en ese archivo.
+- El archivo se rota al alcanzar aproximadamente **5 MB** y Winston conserva hasta cinco archivos rotados.
+- La carpeta `logs/` se crea automáticamente si no existe. `.gitkeep` permite documentar la carpeta vacía en el repositorio.
+- `.gitignore` excluye `logs/`, los archivos `.log`, `.env` y `node_modules/`. No se deben subir logs generados ni credenciales al repositorio.
+
+### Diferencias por entorno
+
+La configuración utiliza `NODE_ENV`, leída desde `src/config/env.config.js`. En `development` la consola registra desde `debug`; en `production`, desde `info`. El archivo de errores conserva `error` y `fatal` en ambos entornos. Configurá las variables necesarias en `.env` a partir de `.env.example`.

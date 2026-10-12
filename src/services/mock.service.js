@@ -4,6 +4,7 @@ import OrderService from './order.service.js'
 import DeliveryService from './delivery.service.js'
 import UserRepository from '../repositories/user.repository.js'
 import DeliveryRepository from '../repositories/delivery.repository.js'
+import logger from '../config/logger.js'
 import {
     AppError,
     InvalidMockQuantityError,
@@ -36,6 +37,7 @@ class MockService {
         const total = Number(qty)
 
         if(!Number.isInteger(total) || total < 1 || total > MAX_QTY){
+            logger.warning('Cantidad inválida solicitada para mocks', { qty, maximum: MAX_QTY })
             throw new InvalidMockQuantityError(qty, MAX_QTY)
         }
 

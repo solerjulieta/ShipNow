@@ -3,6 +3,7 @@ import UserRepository from '../repositories/user.repository.js'
 import DeliveryRepository from '../repositories/delivery.repository.js'
 import { ValidationError, OrderNotFoundError, UserNotFoundError, OrderLockedError } from '../errors/index.js'
 import { USER_ROLES, DELIVERY_STATUS, HTTP_STATUS } from '../constants/index.js'
+import logger from '../config/logger.js'
 
 class OrderService {
     constructor(){
@@ -23,6 +24,7 @@ class OrderService {
         const order = await this.orderRepository.findById(id)
 
         if(!order){
+            logger.warning('Pedido no encontrado', { orderId: id })
             throw new OrderNotFoundError(id)
         }
 
@@ -71,6 +73,7 @@ class OrderService {
 
         // Toda orden nace con su delivery en pending, si no queda huérfana
         await this.deliveryRepository.create({ order: order._id })
+        logger.info('Pedido creado correctamente', { orderId: order._id.toString(), total })
 
         return this.orderRepository.findById(order._id)
     }
