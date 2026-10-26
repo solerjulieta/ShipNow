@@ -1,408 +1,189 @@
 # ShipNow API
 
-API REST de ShipNow refactorizada a una arquitectura en capas (**Controller → Service → Repository**), con configuración de entorno validada al arranque.
-
-Pre-entrega Módulo 1 (arquitectura por capas), Módulo 2 (mocking y carga de datos de prueba), Módulo 3 (manejo profesional de errores) y Módulo 4(Logging y monitoreo básico).
+API REST de ShipNow organizada en capas (**Router → Controller → Service → Repository → Model**). El proyecto incluye gestión de usuarios, pedidos y entregas, endpoints de prueba con datos mock, manejo centralizado de errores y logging con Winston.
 
 ## Requisitos
 
-- Node.js 18 o superior
-- MongoDB (local o Atlas)
+- Node.js 18 o superior.
+- MongoDB local o Atlas.
+- Variables de entorno configuradas en `.env`.
 
-## Cómo correr el proyecto localmente
+## Instalación y ejecución
 
 ```bash
-# 1. Clonar el repositorio e instalar dependencias
 git clone <url-del-repositorio>
-cd shipnow
+cd ShipNow
 npm install
-
-# 2. Crear el archivo de variables de entorno
-cp .env.example .env
-
-# 3. Completar los valores en el .env (sobre todo MONGODB_URI)
-
-# 4. Levantar el servidor
-npm run dev     # modo desarrollo, se recarga al guardar
-npm start       # modo normal
 ```
 
-El servidor queda en `http://localhost:8080` y la API en `http://localhost:8080/api`.
-
-### Variables de entorno
+Copiar `.env.example` a `.env` y completar los valores requeridos:
 
 | Variable | Descripción |
 |---|---|
 | `PORT` | Puerto del servidor |
-| `NODE_ENV` | `development` / `production` |
-| `MONGODB_URI` | String de conexión a MongoDB |
-| `JWT_SECRET` | Secreto para firmar tokens (se usará en el próximo módulo) |
+| `NODE_ENV` | Entorno (`development` o `production`) |
+| `MONGODB_URI` | Cadena de conexión a MongoDB |
+| `JWT_SECRET` | Variable requerida por la configuración actual; no implica que JWT esté implementado |
 
-Las cuatro son obligatorias. Si falta alguna, **la aplicación no arranca** y muestra un error descriptivo:
-
-```
-Error: Falta configurar la variable de entorno: MONGODB_URI. Copiá el archivo .env.example a .env y completá los valores.
-```
-
-## Estructura del proyecto
-
-```
-├── server.js              # Levanta el servidor y conecta la base
-├── app.js                 # Configura Express y monta las rutas
-├── .env.example
-└── src/
-    ├── config/            # dotenv + validación de entorno y conexión a Mongo
-    ├── constants/         # Objetos congelados: roles, estados, prioridades
-    ├── errors/            # AppError, clases de error de dominio, códigos y diccionario
-    ├── models/            # Solo los esquemas de Mongoose
-    ├── repositories/      # Único lugar que conoce Mongoose
-    ├── services/          # Lógica de negocio
-    ├── controllers/       # Manejan req y res
-    ├── routes/            # Conectan el path con el método del controller
-    ├── middlewares/       # errorHandler (único lugar que arma una respuesta de error) y rutas inexistentes
-    └── utils/             # Helpers y el generador de datos falsos
-```
-
-El flujo de dependencias va en una sola dirección:
-
-```
-Router → Controller → Service → Repository → Model → MongoDB
-```
-
-El Controller nunca importa Mongoose.
-
-## Endpoints
-
-### Usuarios — `/api/users`
-
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/` | Lista usuarios. Filtro opcional: `?role=driver` |
-| GET | `/:uid` | Detalle de un usuario |
-| POST | `/` | Crea un usuario (la contraseña se guarda hasheada) |
-| POST | `/login` | Verifica credenciales |
-| PUT | `/:uid` | Actualiza un usuario |
-| DELETE | `/:uid` | Elimina un usuario |
-
-### Productos — `/api/products`
-
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/` | Lista productos. Por defecto solo muestra `available`. Filtros: `?category=`, `?status=` |
-| GET | `/:pid` | Detalle de un producto |
-| POST | `/` | Crea un producto |
-| PUT | `/:pid` | Actualiza un producto |
-| DELETE | `/:pid` | Elimina un producto |
-
-El `status` (`available` / `out_of_stock` / `discontinued`) no se manda por body: lo calcula el Service a partir del `stock`. Si el stock llega a 0, el producto pasa solo a `out_of_stock`.
-
-### Órdenes — `/api/orders`
-
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/` | Lista órdenes. Filtro opcional: `?customer=<id>` |
-| GET | `/:oid` | Detalle de una orden |
-| POST | `/` | Crea una orden y su entrega asociada |
-| PUT | `/:oid` | Actualiza una orden (solo si la entrega sigue en `pending`) |
-| DELETE | `/:oid` | Elimina la orden y su entrega |
-
-Ejemplo de creación:
-
-```json
-POST /api/orders
-{
-    "customer": "68f1a2b3c4d5e6f7a8b9c0d1",
-    "deliveryAddress": "Av. Colón 1234, Córdoba",
-    "items": [
-        { "name": "Caja mediana", "quantity": 2, "price": 1500 },
-        { "name": "Cinta de embalar", "quantity": 1, "price": 500 }
-    ]
-}
-```
-
-El `total` no se manda: lo calcula el Service.
-
-### Entregas — `/api/deliveries`
-
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/` | Lista entregas. Filtros: `?status=`, `?driver=`, `?priority=` |
-| GET | `/:did` | Detalle de una entrega |
-| GET | `/driver/:driverId` | Entregas de un repartidor |
-| PATCH | `/:did/assign` | Asigna un repartidor. Body: `{ "driver": "<id>" }` |
-| PATCH | `/:did/status` | Cambia el estado. Body: `{ "status": "in_transit" }` |
-| PATCH | `/:did/priority` | Cambia la prioridad. Body: `{ "priority": "high" }` |
-
-El estado avanza solo en este orden:
-
-```
-pending → assigned → in_transit → delivered
-```
-
-Cualquier salto (por ejemplo, de `pending` a `delivered`) devuelve un 409 con el motivo.
-
-### Mocking y carga de datos de prueba — `/api/mocks`
-
-Genera datos con forma de usuarios, repartidores, pedidos y entregas para no tener que cargarlos a mano. Usa [`@faker-js/faker`](https://fakerjs.dev/) (locale `es_MX`) para nombres, emails y direcciones.
-
-Hay dos tipos de endpoint:
-
-**Previsualización — `GET`, nunca escriben en la base.** Sirven para ver la forma del dato antes de decidir si lo cargás.
-
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/mocks/users?qty=` | Usuarios simulados. `?role=` opcional (`admin`, `customer`, `driver`, `store`); sin ese parámetro, el rol sale al azar |
-| GET | `/api/mocks/drivers?qty=` | Atajo de lo anterior, forzando `role: driver` |
-| GET | `/api/mocks/orders?qty=` | Pedidos simulados, con ítems y dirección. El `customer` es un ID inventado (no corresponde a un usuario real): esto es solo previsualización |
-| GET | `/api/mocks/deliveries?qty=` | Entregas simuladas, con `status` y `priority` válidos. La mitad, aproximadamente, trae un `driver` asignado |
-
-`qty` es opcional (default `5`, tope `50`).
+Iniciar el servidor:
 
 ```bash
-curl "http://localhost:8080/api/mocks/users?qty=2"
-```
-```json
-[
-  { "firstName": "Ana", "lastName": "Pérez", "email": "ana.perez@test.com", "password": "Coder123!", "role": "customer" },
-  { "firstName": "Luis", "lastName": "Gómez", "email": "luis.gomez@test.com", "password": "Coder123!", "role": "driver" }
-]
+npm run dev
+# o
+npm start
 ```
 
-**Carga real — `POST /api/mocks/seed`, inserta en MongoDB.** A diferencia de la previsualización, este endpoint pasa los datos generados por los Services reales (`UserService`, `OrderService`, `DeliveryService`): la contraseña se hashea igual que en un registro real, el total del pedido se calcula igual, y cada pedido nace con su entrega en `pending` igual que si lo hubiera creado una persona.
+El servidor utiliza el puerto configurado en `PORT` (8080 en la configuración de ejemplo). La API se monta bajo `/api`.
 
-```bash
-curl -X POST "http://localhost:8080/api/mocks/seed?qty=10&collection=users"
-```
-```json
-{ "insertados": 10, "coleccion": "usuarios" }
-```
+## Documentación interactiva Swagger / OpenAPI
 
-`collection` acepta `users` (default), `drivers`, `orders` o `deliveries`:
+Con el servidor iniciado, abrir:
 
-| `collection` | Qué inserta | Relaciones que arma solo |
+**http://localhost:8080/api/docs**
+
+Swagger UI permite consultar y probar los endpoints documentados. La especificación OpenAPI se configura por separado de las rutas en `src/config/swagger.js`; la interfaz se monta desde `app.js`.
+
+La documentación está agrupada en estos tags:
+
+- **Users:** listado, detalle, creación, actualización, eliminación y validación de credenciales.
+- **Orders:** listado, detalle, creación, actualización y eliminación de pedidos.
+- **Deliveries:** listado, detalle, consulta por repartidor, asignación y actualización de estado/prioridad.
+- **Mocks:** previsualización de usuarios, repartidores, pedidos y entregas; inserción de datos de prueba.
+- **Logger:** endpoint técnico para generar registros de prueba en los niveles del logger.
+
+Se incluyen schemas reutilizables para `User`, `Order`, `Delivery`, `OrderItem`, `ErrorResponse` y `SuccessResponse`, además de esquemas de entrada para crear usuarios y pedidos.
+
+## Endpoints principales
+
+Las rutas siguientes se expresan relativas a `http://localhost:8080/api`.
+
+### Users — `/user`
+
+| Método | Ruta | Descripción |
 |---|---|---|
-| `users` | Usuarios con rol `customer` | — |
-| `drivers` | Usuarios con rol `driver` | — |
-| `orders` | Pedidos completos (con su delivery en `pending`) | Si no hay suficientes clientes en la base, crea los que faltan antes de generar los pedidos |
-| `deliveries` | No crea entregas sueltas (nacen con el pedido): toma entregas `pending` existentes y a la mitad les asigna un repartidor real | Si no hay suficientes entregas pendientes, genera los pedidos que faltan primero; si no hay repartidores, los crea |
+| GET | `/user` | Lista usuarios. Filtro opcional `?role=customer`, `driver` o `admin`. |
+| GET | `/user/:uid` | Obtiene un usuario por ID. |
+| POST | `/user` | Crea un usuario. Requiere `firstName`, `lastName`, `email` y `password` (mínimo 8 caracteres); `role` es opcional. |
+| POST | `/user/login` | Valida `email` y `password`. No emite tokens. |
+| PUT | `/user/:uid` | Actualiza un usuario. |
+| DELETE | `/user/:uid` | Elimina un usuario. |
 
-Esto es lo que hace que se cumplan las relaciones pedidas por la consigna sin tener que armarlas a mano: un pedido siempre apunta a un cliente que existe de verdad, y una entrega asignada siempre apunta a un repartidor (rol `driver`) real.
-
-Ejemplo de secuencia para tener datos de prueba completos:
-
-```bash
-curl -X POST "http://localhost:8080/api/mocks/seed?qty=5&collection=users"
-curl -X POST "http://localhost:8080/api/mocks/seed?qty=3&collection=drivers"
-curl -X POST "http://localhost:8080/api/mocks/seed?qty=8&collection=orders"
-curl -X POST "http://localhost:8080/api/mocks/seed?qty=4&collection=deliveries"
-```
-
-## Modelos
-
-Son cuatro, y la decisión de qué va junto y qué va separado se tomó por ciclo de vida:
-
-- **User**: usuarios del sistema con su rol (`admin`, `customer`, `driver`, `store`).
-- **Product**: el catálogo. Tiene vida propia y se consulta de forma independiente, por eso es colección propia y no un subdocumento.
-- **Order**: la orden, con los **ítems embebidos** como subdocumentos. Un ítem no existe sin su orden ni se consulta por separado, así que no merece colección propia.
-- **Delivery**: **colección aparte**, porque tiene vida propia: cambia de estado, se le asigna un repartidor y tiene sus propias fechas. Guarda la referencia a la orden, y la orden la expone con un campo virtual.
-
-## Por qué separé Service y Repository
-
-El criterio que usé fue preguntarme: **si mañana cambio MongoDB por otra base de datos, ¿este código se tiene que reescribir?** Si la respuesta es sí, va en el Repository. Si no, va en el Service.
-
-**En el Repository quedó el acceso a datos:** las consultas, los `populate` con su proyección fija (el `populate` del cliente nunca trae el password), el `select('-password')` de usuarios, y la validación del formato de los ObjectId. Este último punto evita que un id mal escrito como `/api/orders/123` termine en un `CastError` de Mongoose: el repositorio devuelve `null` y el Service solo tiene que decidir qué hacer cuando algo no existe.
-
-**En el Service quedaron las reglas de negocio**, que son las que realmente definen cómo funciona ShipNow:
-
-- **El status de un producto.** No se acepta del body: se calcula a partir del `stock` (0 unidades pasa a `out_of_stock` solo). Igual que con el total de la orden, si el cliente pudiera mandarlo, cualquiera podría marcar un producto sin stock como disponible.
-- **El cálculo del total de la orden.** Es el ejemplo más claro. El total se calcula recorriendo los ítems, y el valor que venga en el body se descarta. Si lo aceptáramos, cualquiera podría mandar `"total": 0` y pagar nada. Un Repository no debería hacer este cálculo: su trabajo es guardar el número, no decidirlo.
-- **La creación automática del Delivery** al crear una orden. Que toda orden nazca con una entrega en `pending` es una regla del negocio, no de la base.
-- **Las validaciones de rol:** que el `customer` de una orden sea realmente un usuario con rol `customer`, y que el `driver` de una entrega tenga rol `driver`.
-- **Las transiciones de estado válidas** de la entrega, definidas en un diccionario de constantes.
-- **El hasheo de contraseñas** y la verificación de emails duplicados.
-- **La regla de que una orden ya asignada no se modifica ni se borra.** Requiere consultar dos repositorios distintos (Order y Delivery), algo que ningún repositorio debería hacer por su cuenta.
-
-La ganancia concreta es que toda la lógica de ShipNow está en un solo lugar y se puede leer sin saber nada de Mongoose.
-
-## Manejo de errores
-
-Toda la gestión de errores vive en `src/errors/`, separada del resto de las capas:
-
-```
-src/errors/
-├── error-codes.js       # catálogo de códigos (USER_NOT_FOUND, VALIDATION_ERROR, etc.)
-├── error-dictionary.js  # por cada código: su status HTTP y su mensaje por defecto
-├── AppError.js           # clase base: arma el error a partir de un código del diccionario
-├── domainErrors.js       # una clase por cada caso real del dominio (hereda de AppError)
-└── index.js               # punto único de import para todo lo anterior
-```
-
-**Ningún Controller ni ninguna ruta arma una respuesta de error.** Los Services son los únicos que detectan un problema y lo señalan, lanzando una clase de error con nombre propio:
-
-```js
-// src/services/order.service.js
-import { OrderNotFoundError } from '../errors/index.js'
-
-const order = await this.orderRepository.findById(id)
-if(!order) throw new OrderNotFoundError(id)
-```
-
-Los Controllers nunca atrapan ese error para responderlo: solo lo reenvían.
-
-```js
-// src/controllers/order.controller.js
-export const getOrderById = async (req, res, next) => {
-    try {
-        const order = await orderService.getOrderById(req.params.oid)
-        res.status(HTTP_STATUS.OK).json({ status: 'success', data: order })
-    } catch (error) {
-        next(error)   // nunca se arma la respuesta de error acá
-    }
-}
-```
-
-`next(error)` termina siempre en `errorHandler` (`src/middlewares/errorHandler.js`), que es el **único** lugar de todo el proyecto que escribe una respuesta de error. Ahí se decide el status HTTP, nunca antes.
-
-### Estructura de la respuesta
-
-Toda respuesta de error, sin excepción (un recurso que no existe, un dato inválido, una ruta que no existe, una falla inesperada), tiene esta forma:
+Ejemplo de body para crear usuario:
 
 ```json
 {
-  "status": "error",
-  "code": "ORDER_NOT_FOUND",
-  "message": "La orden con id \"68f1...\" no existe.",
-  "details": null
+  "firstName": "Ana",
+  "lastName": "Pérez",
+  "email": "ana.perez@test.com",
+  "password": "Coder123!",
+  "role": "customer"
 }
 ```
 
-- `code`: siempre uno de los valores de `ERROR_CODES` (`src/errors/error-codes.js`). Pensado para que el cliente (frontend, Postman, un test automatizado) pueda reaccionar por código, sin tener que parsear el texto de `message`.
-- `message`: en español, pensado para una persona.
-- `details`: `null` casi siempre; trae información extra en los errores de validación (por ejemplo, qué campos faltaron) o cuando se envuelve una falla real de MongoDB (ver más abajo).
+### Orders — `/orders`
 
-### Errores personalizados del dominio
-
-Cada clase en `domainErrors.js` representa un caso concreto, no un mensaje distinto del mismo error genérico:
-
-| Clase | Código | Status | Cuándo se lanza |
-|---|---|---|---|
-| `ValidationError` | `VALIDATION_ERROR` | 400 | Falta un campo requerido, o un valor no pasa una regla (ítems de un pedido, precio/stock negativo, etc.) |
-| `UserNotFoundError` | `USER_NOT_FOUND` | 404 | El usuario (o cliente, o repartidor) indicado no existe |
-| `ProductNotFoundError` | `PRODUCT_NOT_FOUND` | 404 | El producto no existe |
-| `OrderNotFoundError` | `ORDER_NOT_FOUND` | 404 | El pedido no existe |
-| `DeliveryNotFoundError` | `DELIVERY_NOT_FOUND` | 404 | La entrega no existe |
-| `DuplicateEmailError` | `DUPLICATE_EMAIL` | 409 | Ya existe un usuario con ese email |
-| `InvalidCredentialsError` | `INVALID_CREDENTIALS` | 401 | Login con email o contraseña incorrectos |
-| `InvalidRoleError` | `INVALID_ROLE` | 400 | Rol que no está en `USER_ROLES` |
-| `OrderLockedError` | `ORDER_LOCKED` | 409 | Se intenta editar/borrar un pedido cuya entrega ya salió de `pending` |
-| `InsufficientStockError` | `INSUFFICIENT_STOCK` | 409 | No hay stock suficiente para reservar |
-| `InvalidDeliveryStatusError` | `INVALID_DELIVERY_STATUS` | 400 | Estado que no está en `DELIVERY_STATUS` |
-| `InvalidStatusTransitionError` | `INVALID_STATUS_TRANSITION` | 409 | Transición de estado no permitida (ver `ALLOWED_STATUS_TRANSITIONS`) |
-| `InvalidDeliveryPriorityError` | `INVALID_DELIVERY_PRIORITY` | 400 | Prioridad que no está en `DELIVERY_PRIORITY` |
-| `DeliveryNotPendingError` | `DELIVERY_NOT_PENDING` | 409 | Se intenta asignar repartidor a una entrega que no está `pending` |
-| `InvalidMockQuantityError` | `INVALID_MOCK_QTY` | 400 | `qty` no es un entero entre 1 y 50 (cubre tanto negativos como valores fuera de rango) |
-| `InvalidMockCollectionError` | `INVALID_MOCK_COLLECTION` | 400 | `collection` no es `users`, `drivers`, `orders` ni `deliveries` |
-| `MockSeedError` | `MOCK_SEED_FAILED` | 500 | Falló algo inesperado de MongoDB mientras se insertaban datos de prueba (ver abajo) |
-
-A esto se suman tres códigos que no tienen clase propia porque no los lanza un Service, sino que los detecta directamente el `errorHandler` al reconocer un error que vino de Mongoose o de Express:
-
-| Código | Status | De dónde sale |
+| Método | Ruta | Descripción |
 |---|---|---|
-| `CAST_ERROR` | 400 | Un `CastError` de Mongoose (id con formato inválido que logró esquivar la validación previa) |
-| `DUPLICATE_KEY` | 409 | Error `11000` de MongoDB (índice único duplicado a nivel de base) |
-| `ROUTE_NOT_FOUND` | 404 | Ninguna ruta coincidió (lo emite `notFound.js`, con la misma estructura) |
-| `INTERNAL_ERROR` | 500 | Cualquier error no previsto; en producción no expone el mensaje real |
+| GET | `/orders` | Lista pedidos. Filtro opcional `?customer=<id>`. |
+| GET | `/orders/:oid` | Obtiene un pedido por ID. |
+| POST | `/orders` | Crea un pedido y su entrega asociada. |
+| PUT | `/orders/:oid` | Actualiza un pedido mientras su entrega siga en `pending`. |
+| DELETE | `/orders/:oid` | Elimina un pedido y su entrega asociada si sigue en `pending`. |
 
-### El módulo de mocks: validación y fallas controladas
-
-`POST /api/mocks/seed` es el único endpoint que escribe en la base, así que es el que más puede fallar. Cubre los tres casos que pide la consigna:
-
-- **Cantidad inválida**: `qty=abc`, `qty=0` o un `qty` que no sea entero → `InvalidMockQuantityError` (400).
-- **Valores negativos**: `qty=-5` → el mismo chequeo de cantidad lo atrapa, porque `-5 < 1` (400). Lo mismo corre para `collection` fuera de la lista válida → `InvalidMockCollectionError` (400).
-- **Fallas durante la carga en MongoDB**: si algo inesperado pasa mientras se están insertando los datos (se cae la conexión, un timeout, etc.), `MockService.seed()` lo atrapa y lo envuelve en `MockSeedError` (500) en vez de dejar que el stack trace crudo de Mongo llegue al cliente. El mensaje original queda guardado en `details.cause`, para debug:
+Ejemplo de body para crear pedido:
 
 ```json
 {
-  "status": "error",
-  "code": "MOCK_SEED_FAILED",
-  "message": "No se pudo completar la carga de datos de prueba.",
-  "details": { "cause": "connection timed out" }
+  "customer": "<id-de-un-usuario-customer>",
+  "deliveryAddress": "Av. Colón 1234, Córdoba",
+  "items": [
+    { "name": "Caja mediana", "quantity": 2, "price": 1500 },
+    { "name": "Cinta de embalar", "quantity": 1, "price": 500 }
+  ]
 }
 ```
 
-Importante: esto **no** enmascara un error de negocio legítimo. Si durante el seed un email generado chocara con uno existente, eso sigue respondiendo como `DuplicateEmailError` (409) tal cual, porque ya es un `AppError` y no algo inesperado.
+El `total` se calcula en el servidor; no se envía en el body.
 
-### Cómo probar los casos inválidos
+### Deliveries — `/deliveries`
 
-```bash
-# Cantidad inválida (incluye negativos)
-curl "http://localhost:8080/api/mocks/users?qty=0"
-curl "http://localhost:8080/api/mocks/users?qty=-5"
-curl "http://localhost:8080/api/mocks/users?qty=999"     # excede el tope de 50
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/deliveries` | Lista entregas. Admite filtros `status`, `driver` y `priority`. |
+| GET | `/deliveries/:did` | Obtiene una entrega por ID. |
+| GET | `/deliveries/driver/:driverId` | Lista entregas de un repartidor. |
+| PATCH | `/deliveries/:did/assign` | Asigna un repartidor. Body: `{ "driver": "<id>" }`. |
+| PATCH | `/deliveries/:did/status` | Actualiza el estado. Body: `{ "status": "in_transit" }`. |
+| PATCH | `/deliveries/:did/priority` | Actualiza la prioridad. Body: `{ "priority": "high" }`. |
 
-# Rol inválido
-curl "http://localhost:8080/api/mocks/users?role=inventado"
+Estados documentados por el modelo/servicio: `pending`, `assigned`, `in_transit`, `delivered`. Las transiciones de estado están restringidas por las reglas del servicio. Prioridades: `low`, `normal`, `high`.
 
-# Colección inválida en el seed
-curl.exe -X POST "http://localhost:8080/api/mocks/seed?collection=inventado"
+### Mocks — `/mocks`
 
-# Recurso que no existe, en cualquier entidad
-curl "http://localhost:8080/api/users/000000000000000000000000"
-curl "http://localhost:8080/api/orders/000000000000000000000000"
-curl "http://localhost:8080/api/deliveries/000000000000000000000000"
+Los endpoints de previsualización generan datos simulados y no los insertan en MongoDB. El parámetro `qty` es opcional, por defecto vale `5` y debe ser un entero entre `1` y `50`.
 
-# Ruta que no existe
-curl "http://localhost:8080/api/esto-no-existe"
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/mocks/users?qty=5` | Previsualiza usuarios mock. Admite `role` opcional. |
+| GET | `/mocks/drivers?qty=5` | Previsualiza repartidores mock. |
+| GET | `/mocks/orders?qty=5` | Previsualiza pedidos mock. |
+| GET | `/mocks/deliveries?qty=5` | Previsualiza entregas mock. |
+| POST | `/mocks/seed` | Inserta datos de prueba en MongoDB. |
+
+Para `/mocks/seed`, se puede enviar `qty` y `collection` por query string o en el body JSON. `qty` por defecto es `10`; `collection` por defecto es `users`. Las colecciones admitidas por el servicio son `users`, `drivers`, `orders` y `deliveries`.
+
+Ejemplo:
+
+```json
+{
+  "qty": 5,
+  "collection": "users"
+}
 ```
 
-Todas estas respuestas tienen que verse con la misma forma: `{ "status": "error", "code": "...", "message": "...", "details": ... }`, cambiando solo el `code`, el `message` y el status HTTP según el caso. Si alguna vez un error no sigue este formato, es una señal de que algo quedó respondiendo por fuera del `errorHandler`.
+Las cantidades fuera del rango válido y los valores de colección no admitidos se responden como errores de la API.
 
-## Constantes
+### Logger — `/loggerTest`
 
-No hay strings sueltos. Roles, estados, prioridades, transiciones permitidas y códigos HTTP están en `src/constants/index.js`, todos con `Object.freeze`:
+`GET /loggerTest` genera eventos de prueba para los niveles `debug`, `http`, `info`, `warning`, `error` y `fatal`. Devuelve un resumen de la prueba y la ruta lógica del directorio de logs (`logs/`). Es una herramienta de validación técnica, no una funcionalidad de negocio.
 
-```js
-import { USER_ROLES, DELIVERY_STATUS } from '../constants/index.js'
+## Respuestas y errores
 
-if(driver.role !== USER_ROLES.DRIVER){ /* ... */ }
+Las respuestas exitosas de los módulos de usuarios, pedidos y entregas suelen utilizar el formato:
+
+```json
+{
+  "status": "success",
+  "data": {}
+}
 ```
 
-Los `enum` de los modelos también se arman desde ahí (`enum: Object.values(USER_ROLES)`), así que si cambia un valor, cambia en un solo lugar.
+Las respuestas de error de negocio y los errores internos procesados por el middleware incluyen `status`, `code`, `message` y `details`. La ruta inexistente usa `status` y `message`. Los códigos HTTP concretos dependen del error y del endpoint; Swagger documenta las respuestas previstas para cada operación.
 
-## Notas
+Entre los casos manejados se encuentran datos inválidos, recursos inexistentes, credenciales inválidas en login, conflictos por datos duplicados, transiciones de estado no permitidas, cantidades inválidas para mocks y errores internos. No hay autenticación JWT aplicada a los endpoints en esta entrega.
 
-- `.env` está en el `.gitignore`; el repositorio solo incluye `.env.example`.
-- `process.env` se lee **únicamente** en `src/config/env.config.js`.
-## Logging y monitoreo básico (Módulo 4)
+## Logging
 
-ShipNow utiliza **Winston** mediante una configuración centralizada en `src/config/logger.js`. Los registros incluyen fecha y hora, nivel y mensaje; los metadatos adicionales se adjuntan cuando aportan contexto.
+Winston escribe los registros en consola y en `logs/error.log`. El archivo se rota por tamaño (5 MB) y se conservan hasta cinco archivos según la configuración de Winston. El directorio `logs/` se crea automáticamente al inicializar el logger; no hace falta un archivo `.gitkeep`.
 
-### Niveles disponibles
+## Estructura relevante
 
-- `debug`: detalle útil durante el desarrollo.
-- `http`: eventos relacionados con HTTP.
-- `info`: eventos normales, como el inicio del servidor, conexión a MongoDB y creación de pedidos.
-- `warning`: situaciones esperables que requieren atención, como errores de negocio, cantidades inválidas o rutas inexistentes.
-- `error`: errores inesperados de la aplicación.
-- `fatal`: fallas críticas, por ejemplo, una conexión inicial fallida a MongoDB.
-
-### Probar el logger
-
-Con el servidor iniciado, ejecutá esta petición en el navegador, Postman o una terminal:
-
-```bash
-curl http://localhost:8080/api/logger-test
+```text
+├── app.js
+├── server.js
+├── src/
+│   ├── config/
+│   │   ├── logger.js
+│   │   └── swagger.js
+│   ├── controllers/
+│   ├── errors/
+│   ├── middlewares/
+│   ├── models/
+│   ├── repositories/
+│   ├── routes/
+│   ├── services/
+│   └── utils/
+└── README.md
 ```
 
-El endpoint genera un evento por cada nivel y devuelve una respuesta JSON de confirmación. En desarrollo, la consola muestra todos los niveles; en producción muestra desde `info`. El endpoint es una herramienta de diagnóstico, no una operación de negocio.
-
-### Archivos y rotación
-
-- Los errores y eventos `fatal` se guardan en `logs/error.log`; los niveles `debug`, `http`, `info` y `warning` no se escriben en ese archivo.
-- El archivo se rota al alcanzar aproximadamente **5 MB** y Winston conserva hasta cinco archivos rotados.
-- La carpeta `logs/` se crea automáticamente si no existe. `.gitkeep` permite documentar la carpeta vacía en el repositorio.
-- `.gitignore` excluye `logs/`, los archivos `.log`, `.env` y `node_modules/`. No se deben subir logs generados ni credenciales al repositorio.
-
-### Diferencias por entorno
-
-La configuración utiliza `NODE_ENV`, leída desde `src/config/env.config.js`. En `development` la consola registra desde `debug`; en `production`, desde `info`. El archivo de errores conserva `error` y `fatal` en ambos entornos. Configurá las variables necesarias en `.env` a partir de `.env.example`.
+La documentación se mantiene en `src/config/swagger.js`, separada de la lógica de enrutamiento. Al probar operaciones que consultan o modifican datos, se necesita una conexión válida a MongoDB y los IDs referenciados deben existir.
