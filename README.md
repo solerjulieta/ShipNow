@@ -143,9 +143,9 @@ Ejemplo:
 
 Las cantidades fuera del rango válido y los valores de colección no admitidos se responden como errores de la API.
 
-### Logger — `/loggerTest`
+### Logger — `/logger-test`
 
-`GET /loggerTest` genera eventos de prueba para los niveles `debug`, `http`, `info`, `warning`, `error` y `fatal`. Devuelve un resumen de la prueba y la ruta lógica del directorio de logs (`logs/`). Es una herramienta de validación técnica, no una funcionalidad de negocio.
+`GET /logger-test` genera eventos de prueba para los niveles `debug`, `http`, `info`, `warning`, `error` y `fatal`. Devuelve un resumen de la prueba y la ruta lógica del directorio de logs (`logs/`). Es una herramienta de validación técnica, no una funcionalidad de negocio.
 
 ## Respuestas y errores
 
@@ -187,3 +187,44 @@ Winston escribe los registros en consola y en `logs/error.log`. El archivo se ro
 ```
 
 La documentación se mantiene en `src/config/swagger.js`, separada de la lógica de enrutamiento. Al probar operaciones que consultan o modifican datos, se necesita una conexión válida a MongoDB y los IDs referenciados deben existir.
+
+## Testing funcional
+
+La suite valida los endpoints principales mediante pruebas HTTP automatizadas, sin iniciar manualmente un puerto y sin utilizar la base de datos de desarrollo.
+
+### Herramientas
+
+- **Mocha:** organiza y ejecuta los casos de prueba.
+- **Chai:** valida status HTTP, estructura del body y propiedades relevantes.
+- **Supertest:** realiza peticiones HTTP directamente sobre la aplicación Express.
+- **MongoDB Memory Server:** levanta una instancia MongoDB temporal en memoria para cada ejecución de la suite.
+
+### Instalación y ejecución
+
+Instalar las dependencias del proyecto: `npm install`. Luego ejecutar:
+
+```bash
+npm test
+```
+
+El script configura `NODE_ENV=test`, carga `tests/setup.js`, inicia MongoDB en memoria, conecta Mongoose y ejecuta todos los archivos `tests/*.test.js`. Al finalizar, elimina la base temporal, cierra la conexión y detiene el servidor MongoDB. No es necesario iniciar `npm run dev` ni `npm start`.
+
+### Módulos cubiertos
+
+- **Users:** listado de usuarios y respuesta 404 al consultar un usuario inexistente.
+- **Orders:** listado, creación con cliente de prueba, consulta por ID, datos incompletos y pedido inexistente.
+- **Deliveries:** actualización válida de estado y rechazo de un estado inválido.
+- **Mocks:** previsualización de usuarios, repartidores, pedidos y entregas; inserción controlada con `/mocks/seed`; cantidades inválidas.
+- **Logger:** respuesta del endpoint técnico y niveles informados.
+- **Swagger:** acceso a la interfaz de documentación en `/api/docs/`.
+- **Rutas inexistentes:** respuesta 404 con el contrato estándar de error.
+
+Cada grupo limpia las colecciones que utiliza antes de sus pruebas. Los usuarios, pedidos y entregas necesarios se crean dentro de la propia suite; los endpoints de previsualización de mocks no insertan información en la base. Por eso, los tests no dependen de datos manuales ni del orden de ejecución.
+
+### Base de datos y variables de entorno
+
+No se requiere una instancia local ni Atlas para ejecutar los tests: `mongodb-memory-server` crea una base temporal aislada llamada `shipnow_test`. La URI se genera automáticamente y se asigna a `MONGODB_URI` antes de importar la aplicación.
+
+El setup establece `NODE_ENV=test`, `PORT=0` y `JWT_SECRET` con valores exclusivos de testing. Si se desea personalizarlos, se puede crear `.env.test` a partir de `.env.test.example`; este archivo está excluido de Git. No se debe configurar aquí la URI de desarrollo: la suite la reemplaza por la URI temporal en memoria.
+
+La aplicación Express se exporta desde `app.js` y el levantamiento del servidor permanece en `server.js`, por lo que Supertest puede importar la aplicación sin abrir un puerto manualmente.
