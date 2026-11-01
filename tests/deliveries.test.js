@@ -21,7 +21,11 @@ describe('Deliveries - actualización de estado', function(){
         const customer = await createCustomer()
         const { delivery } = await createOrder(customer._id)
         const res = await request(app).patch(`/api/deliveries/${delivery._id}/status`).send({ status: 'volando' }).expect(400)
-        expect(res.body).to.include({ status: 'error', code: 'INVALID_DELIVERY_STATUS', message: 'El estado indicado no es válido.' })
+        expect(res.body).to.include({
+            status: 'error',
+            code: 'INVALID_DELIVERY_STATUS',
+            message: 'El estado "volando" no es válido. Debe ser uno de: pending, assigned, in_transit, delivered.'
+        })
         expect(res.body).to.have.property('details')
     })    
 })

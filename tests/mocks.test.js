@@ -8,18 +8,22 @@ describe('Mocks', function(){
 
     for (const endpoint of ['users', 'drivers', 'orders', 'deliveries']) {
         it(`GET /api/mocks/${endpoint} genera datos simulados`, async function () {
-        const res = await request(app).get(`/api/mocks/${endpoint}?qty=2`).expect(200)
-        expect(res.body).to.be.an('array').with.length(2)
-        expect(res.body[0]).to.be.an('object')
-        if (endpoint === 'users' || endpoint === 'drivers') expect(res.body[0]).to.include.keys('firstName', 'lastName', 'email', 'role')
-        if (endpoint === 'orders') expect(res.body[0]).to.include.keys('customer', 'deliveryAddress', 'items')
-        if (endpoint === 'deliveries') expect(res.body[0]).to.include.keys('order', 'status', 'priority')
+            const res = await request(app).get(`/api/mocks/${endpoint}?qty=2`).expect(200)
+            expect(res.body).to.be.an('array').with.length(2)
+            expect(res.body[0]).to.be.an('object')
+            if (endpoint === 'users' || endpoint === 'drivers') expect(res.body[0]).to.include.keys('firstName', 'lastName', 'email', 'role')
+            if (endpoint === 'orders') expect(res.body[0]).to.include.keys('customer', 'deliveryAddress', 'items')
+            if (endpoint === 'deliveries') expect(res.body[0]).to.include.keys('order', 'status', 'priority')
         })
 
         it(`GET /api/mocks/${endpoint} rechaza cantidades inválidas`, async function () {
-        const res = await request(app).get(`/api/mocks/${endpoint}?qty=0`).expect(400)
-        expect(res.body).to.include({ status: 'error', code: 'INVALID_MOCK_QTY', message: 'La cantidad solicitada no es válida.' })
-        expect(res.body).to.have.property('details')
+            const res = await request(app).get(`/api/mocks/${endpoint}?qty=0`).expect(400)
+            expect(res.body).to.include({
+                status: 'error',
+                code: 'INVALID_MOCK_QTY',
+                message: 'El parámetro "qty" (0) debe ser un entero entre 1 y 50.'
+            })
+            expect(res.body).to.have.property('details')
         })
     }    
 })
@@ -35,7 +39,11 @@ describe('Mocks - seed', function(){
 
     it('POST /api/mocks/seed rechaza una cantidad inválida', async function () {
         const res = await request(app).post('/api/mocks/seed').send({ qty: 0, collection: 'users' }).expect(400)
-        expect(res.body).to.include({ status: 'error', code: 'INVALID_MOCK_QTY', message: 'La cantidad solicitada no es válida.' })
+        expect(res.body).to.include({
+            status: 'error',
+            code: 'INVALID_MOCK_QTY',
+            message: 'El parámetro "qty" (0) debe ser un entero entre 1 y 50.'
+        })
         expect(res.body).to.have.property('details')
     })
 })

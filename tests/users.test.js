@@ -17,7 +17,11 @@ describe('Users', function(){
 
     it('GET /api/user/:uid responde 404 con código y mensaje si no existe', async function () {
         const res = await request(app).get('/api/user/507f1f77bcf86cd799439011').expect(404)
-        expect(res.body).to.include({ status: 'error', code: 'USER_NOT_FOUND', message: 'El usuario no existe.' })
+        expect(res.body).to.include({
+            status: 'error',
+            code: 'USER_NOT_FOUND',
+            message: 'El usuario con id "507f1f77bcf86cd799439011" no existe.'
+        })
         expect(res.body).to.have.property('details')
     })    
 })

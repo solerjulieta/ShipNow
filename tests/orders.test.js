@@ -25,7 +25,11 @@ describe('Orders', function(){
 
     it('POST /api/orders rechaza datos incompletos con VALIDATION_ERROR', async function () {
         const res = await request(app).post('/api/orders').send({ deliveryAddress: 'Sin cliente' }).expect(400)
-        expect(res.body).to.include({ status: 'error', code: 'VALIDATION_ERROR', message: 'Los datos enviados no son válidos.' })
+        expect(res.body).to.include({
+            status: 'error',
+            code: 'VALIDATION_ERROR',
+            message: 'Falta información requerida.'
+        })
         expect(res.body.details).to.be.an('object')
     })
 
@@ -40,7 +44,11 @@ describe('Orders', function(){
 
     it('GET /api/orders/:oid devuelve 404 si el pedido no existe', async function () {
         const res = await request(app).get('/api/orders/507f1f77bcf86cd799439011').expect(404)
-        expect(res.body).to.include({ status: 'error', code: 'ORDER_NOT_FOUND', message: 'La orden no existe.' })
+        expect(res.body).to.include({
+            status: 'error',
+            code: 'ORDER_NOT_FOUND',
+            message: 'La orden con id "507f1f77bcf86cd799439011" no existe.'
+        })
         expect(res.body).to.have.property('details')
     })    
 })
