@@ -38,6 +38,13 @@ export default class DeliveryRepository {
             .populate('driver', 'firstName lastName email')
     }
 
+    async addProof(id, proofMetadata){
+        if(!isValidId(id)) return null
+        return Delivery.findByIdAndUpdate(id, { $push: { proofs: proofMetadata } }, { new: true, runValidators: true })
+            .populate('order')
+            .populate('driver', 'firstName lastName email')
+    }    
+
     async delete(id){
         if(!isValidId(id)) return null
         return Delivery.findByIdAndDelete(id)

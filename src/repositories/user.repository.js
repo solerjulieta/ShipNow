@@ -32,6 +32,11 @@ export default class UserRepository {
         return User.findByIdAndUpdate(id, userData, { new: true, runValidators: true }).select('-password')
     }
 
+    async addDocument(id, documentMetadata){
+        if(!isValidId(id)) return null
+        return User.findByIdAndUpdate(id, { $push: { documents: documentMetadata } }, { new: true, runValidators: true }).select('-password')
+    }    
+
     async delete(id){
         if(!isValidId(id)) return null
         return User.findByIdAndDelete(id).select('-password')
