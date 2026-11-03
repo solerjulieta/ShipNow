@@ -116,3 +116,27 @@ export class MockSeedError extends AppError {
         })
     }
 }
+
+export class FileRequiredError extends AppError {
+    constructor(){ super(ERROR_CODES.FILE_REQUIRED, 'El archivo es obligatorio.') }
+}
+
+export class FileTypeNotAllowedError extends AppError {
+    constructor(mimeType){ super(ERROR_CODES.FILE_TYPE_NOT_ALLOWED, 'El tipo de archivo no está permitido.', { mimeType }) }
+}
+
+export class FileTooLargeError extends AppError {
+    constructor(maxSize){ super(ERROR_CODES.FILE_TOO_LARGE, 'El archivo supera el tamaño máximo permitido.', { maxSizeBytes: maxSize }) }
+}
+
+export class UploadFieldError extends AppError {
+    constructor(reason, field){ super(ERROR_CODES.UPLOAD_FIELD_INVALID, 'El campo de archivo enviado no es válido.', { reason, field }) }
+}
+
+export class InvalidDocumentTypeError extends AppError {
+    constructor(type, allowed){ super(ERROR_CODES.DOCUMENT_TYPE_INVALID, 'El tipo de documento no es válido.', { received: type, allowed }) }
+}
+
+export class FileSaveError extends AppError {
+    constructor(){ super(ERROR_CODES.FILE_SAVE_FAILED, 'No se pudo guardar la información del archivo.') }
+}

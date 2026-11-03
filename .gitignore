@@ -4,3 +4,9 @@ node_modules/
 .DS_Store
 logs/
 npm-debug.log*
+
+# Testing
+.env.test
+
+# Carpeta uploads (Multer)
+uploads/

@@ -30,12 +30,15 @@ const userSchema = new mongoose.Schema(
             default: USER_ROLES.CUSTOMER
         },
         documents: {
-            type: [
-                {
-                    name: { type: String },
-                    reference: { type: String }
-                }
-            ],
+            type: [{
+                originalName: { type: String, required: true },
+                generatedName: { type: String, required: true },
+                path: { type: String, required: true },
+                mimeType: { type: String, required: true },
+                size: { type: Number, required: true },
+                documentType: { type: String, enum: ['identity', 'license', 'other'], required: true },
+                uploadedAt: { type: Date, default: Date.now }
+            }],
             default: []
         }
     }, { timestamps: true }

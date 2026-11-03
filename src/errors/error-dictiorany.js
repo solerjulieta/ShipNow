@@ -3,6 +3,12 @@ import { HTTP_STATUS } from '../constants/index.js'
 
 // Diccionario de errores
 export const ERROR_DICTIONARY = Object.freeze({
+    [ERROR_CODES.FILE_REQUIRED]: { statusCode: HTTP_STATUS.BAD_REQUEST, message: 'El archivo es obligatorio.' },
+    [ERROR_CODES.FILE_TYPE_NOT_ALLOWED]: { statusCode: HTTP_STATUS.BAD_REQUEST, message: 'El tipo de archivo no está permitido.' },
+    [ERROR_CODES.FILE_TOO_LARGE]: { statusCode: HTTP_STATUS.BAD_REQUEST, message: 'El archivo supera el tamaño máximo permitido.' },
+    [ERROR_CODES.UPLOAD_FIELD_INVALID]: { statusCode: HTTP_STATUS.BAD_REQUEST, message: 'El campo de archivo enviado no es válido.' },
+    [ERROR_CODES.DOCUMENT_TYPE_INVALID]: { statusCode: HTTP_STATUS.BAD_REQUEST, message: 'El tipo de documento no es válido.' },
+    [ERROR_CODES.FILE_SAVE_FAILED]: { statusCode: HTTP_STATUS.INTERNAL_ERROR, message: 'No se pudo guardar la información del archivo.' },    
     [ERROR_CODES.VALIDATION_ERROR]: {
         statusCode: HTTP_STATUS.BAD_REQUEST,
         message: 'Los datos enviados no son válidos.'
